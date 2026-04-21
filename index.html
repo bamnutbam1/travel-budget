@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>🌴 Travel Budget Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --pink: #FF6B9D; --orange: #FF9F43; --blue: #54A0FF;
+    --green: #1DD1A1; --purple: #A29BFE; --red: #FF6B6B;
+    --bg: linear-gradient(135deg, #FFF9E6 0%, #FFF0FB 50%, #E8F4FF 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; background: var(--bg); min-height: 100vh; padding: 14px; padding-bottom: 80px; }
+
+  /* Toast */
+  #toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%) translateY(-80px); background: var(--green); color: #fff; padding: 10px 22px; border-radius: 30px; font-weight: 700; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,0.2); font-size: 14px; transition: transform 0.35s cubic-bezier(.34,1.56,.64,1); white-space: nowrap; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.error { background: var(--red); }
+
+  /* Sync indicator */
+  #sync-status { position: fixed; bottom: 14px; right: 14px; background: #fff; border-radius: 30px; padding: 6px 14px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 12px rgba(0,0,0,0.12); z-index: 999; display: flex; align-items: center; gap: 6px; transition: all 0.3s; }
+  #sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #ccc; transition: background 0.3s; }
+  #sync-dot.syncing { background: var(--orange); animation: pulse 1s infinite; }
+  #sync-dot.synced { background: var(--green); }
+  #sync-dot.error { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Modal */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9000; align-items: center; justify-content: center; padding: 20px; }
+  .modal-bg.open { display: flex; }
+  .modal { background: #fff; border-radius: 24px; padding: 24px; width: 100%; max-width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }
+  .modal h3 { font-size: 17px; font-weight: 800; text-align: center; color: #333; margin: 8px 0 4px; }
+  .modal-sub { font-size: 13px; color: #999; text-align: center; line-height: 1.8; margin-bottom: 14px; }
+  .preset-list { background: #FFF8F0; border-radius: 14px; padding: 10px 14px; max-height: 200px; overflow-y: auto; margin-bottom: 16px; }
+  .preset-row { display: flex; justify-content: space-between; font-size: 12px; padding: 4px 0; border-bottom: 1px solid #f0e0d0; }
+  .preset-row:last-child { border: none; }
+  .preset-row span:last-child { font-weight: 700; color: var(--orange); flex-shrink: 0; margin-left: 8px; }
+  .modal-btns { display: flex; gap: 10px; }
+
+  /* Header */
+  .header { text-align: center; margin-bottom: 14px; }
+  .header-emojis { font-size: 20px; margin-bottom: 6px; letter-spacing: 2px; }
+  .header-card { background: linear-gradient(135deg, var(--pink), var(--orange)); border-radius: 18px; padding: 14px 18px; box-shadow: 0 6px 24px rgba(255,107,157,0.3); }
+  #trip-name { background: transparent; border: none; outline: none; color: #fff; font-size: 16px; font-weight: 800; text-align: center; width: 100%; font-family: inherit; }
+  .header-sub { color: rgba(255,255,255,0.85); font-size: 12px; margin-top: 2px; }
+  .cloud-badge { display: inline-flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.2); border-radius: 20px; padding: 2px 10px; font-size: 11px; color: rgba(255,255,255,0.9); margin-top: 4px; }
+
+  /* Action Buttons */
+  .action-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .btn-preset { padding: 11px 8px; border-radius: 14px; border: 2px dashed var(--orange); background: #FFF8F0; color: var(--orange); font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+  .btn-excel { padding: 11px 8px; border-radius: 14px; border: none; background: linear-gradient(135deg, var(--green), #00b894); color: #fff; font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer; box-shadow: 0 3px 12px rgba(29,209,161,0.3); }
+  .btn-excel:disabled { background: #f0f0f0; color: #ccc; box-shadow: none; cursor: not-allowed; }
+
+  /* Summary Cards */
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .summary-card { background: #fff; border-radius: 16px; padding: 14px 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+  .summary-card .icon { font-size: 20px; margin-bottom: 4px; }
+  .summary-card .label { font-size: 11px; color: #aaa; font-weight: 600; }
+  .summary-card .value { font-size: 18px; font-weight: 800; margin-top: 2px; }
+  .summary-card .sub { font-size: 11px; color: #ccc; margin-top: 2px; }
+
+  /* Budget box */
+  .budget-box { background: #fff; border-radius: 16px; padding: 14px; margin-bottom: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+  .budget-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .budget-row span { font-size: 13px; font-weight: 700; color: #555; }
+  .budget-input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 0; }
+  .budget-input-row input { flex: 1; border: 1.5px solid #eee; border-radius: 10px; padding: 7px 10px; font-size: 14px; font-family: inherit; outline: none; background: #fafafa; }
+  .budget-input-row span { font-size: 13px; color: #888; }
+  .prog-wrap { background: #f0f0f0; border-radius: 20px; height: 10px; overflow: hidden; margin-top: 10px; }
+  .prog-bar { height: 100%; border-radius: 20px; transition: width 0.6s ease; background: linear-gradient(90deg, var(--green), #00b894); }
+  .prog-bar.over { background: linear-gradient(90deg, var(--red), #ee5a24); }
+  .prog-labels { display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; }
+  select.member-sel { font-size: 13px; font-weight: 700; border: 1.5px solid #eee; border-radius: 8px; padding: 3px 6px; outline: none; font-family: inherit; }
+
+  /* Tabs */
+  .tabs { display: flex; background: #fff; border-radius: 16px; padding: 4px; margin-bottom: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
+  .tab-btn { flex: 1; padding: 10px 4px; border-radius: 12px; border: none; cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit; transition: all 0.2s; background: transparent; color: #888; }
+  .tab-btn.active { background: linear-gradient(135deg, var(--pink), var(--orange)); color: #fff; box-shadow: 0 3px 12px rgba(255,107,157,0.3); }
+
+  /* Tab panels */
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Form */
+  .form-card { background: #fff; border-radius: 20px; padding: 18px; box-shadow: 0 2px 16px rgba(0,0,0,0.07); }
+  .form-title { font-size: 16px; font-weight: 800; margin-bottom: 14px; color: #333; }
+  label.lbl { display: block; font-size: 13px; font-weight: 700; color: #777; margin-bottom: 6px; }
+  .inp { width: 100%; border: 1.5px solid #eee; border-radius: 12px; padding: 10px 14px; font-size: 15px; font-family: inherit; outline: none; margin-bottom: 14px; background: #fafafa; transition: border 0.2s; }
+  .inp:focus { border-color: var(--pink); }
+  .inp-amount { font-size: 22px; font-weight: 700; color: var(--pink); }
+  .cat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .cat-btn { padding: 9px 8px; border-radius: 12px; border: 2px solid #eee; background: #fff; cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; color: #888; transition: all 0.15s; text-align: left; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .two-col .inp { margin-bottom: 0; }
+  .form-btns { display: flex; gap: 10px; }
+  .btn-cancel { flex: 1; padding: 13px; border-radius: 14px; border: 2px solid #eee; background: #fff; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit; color: #888; }
+  .btn-save { flex: 2; padding: 13px; border-radius: 14px; border: none; background: linear-gradient(135deg, var(--pink), var(--orange)); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; font-family: inherit; box-shadow: 0 4px 16px rgba(255,107,157,0.35); }
+
+  /* Filter chips */
+  .filter-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 12px; scrollbar-width: none; }
+  .filter-row::-webkit-scrollbar { display: none; }
+  .chip { white-space: nowrap; padding: 7px 14px; border-radius: 30px; border: 1.5px solid #eee; background: #fff; color: #888; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; flex-shrink: 0; transition: all 0.15s; }
+  .chip.active { color: #fff; border-color: var(--pink); background: var(--pink); }
+
+  /* Expense list */
+  .exp-list { display: flex; flex-direction: column; gap: 10px; }
+  .exp-item { background: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); display: flex; align-items: center; gap: 12px; }
+  .exp-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .exp-info { flex: 1; min-width: 0; }
+  .exp-name { font-weight: 700; font-size: 14px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .exp-meta { font-size: 12px; color: #aaa; margin-top: 2px; }
+  .exp-note { font-size: 11px; color: #bbb; margin-top: 1px; }
+  .exp-right { text-align: right; flex-shrink: 0; }
+  .exp-amount { font-weight: 800; font-size: 16px; }
+  .exp-actions { display: flex; gap: 6px; margin-top: 6px; justify-content: flex-end; }
+  .exp-actions button { font-size: 16px; background: none; border: none; cursor: pointer; padding: 2px; }
+  .empty-state { text-align: center; padding: 40px 20px; color: #bbb; }
+  .empty-state .big { font-size: 48px; }
+  .empty-state p { font-size: 15px; margin-top: 8px; }
+
+  /* Summary tab */
+  .total-card { background: linear-gradient(135deg, #667eea, #764ba2); border-radius: 20px; padding: 18px; color: #fff; margin-bottom: 12px; }
+  .total-card .t-label { font-size: 13px; opacity: 0.85; }
+  .total-card .t-value { font-size: 36px; font-weight: 800; }
+  .total-card .t-sub { font-size: 13px; opacity: 0.8; margin-top: 4px; }
+  .white-card { background: #fff; border-radius: 20px; padding: 18px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); margin-bottom: 12px; }
+  .card-title { font-size: 15px; font-weight: 800; margin-bottom: 14px; color: #333; }
+  .cat-row { margin-bottom: 12px; }
+  .cat-row-top { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px; }
+  .cat-row-top span:first-child { font-weight: 600; color: #444; }
+  .cat-row-top span:last-child { font-weight: 800; }
+  .prog-sm { background: #f0f0f0; border-radius: 20px; height: 8px; overflow: hidden; }
+  .prog-sm-bar { height: 100%; border-radius: 20px; transition: width 0.6s; }
+  .cat-pct { font-size: 11px; color: #bbb; text-align: right; margin-top: 2px; }
+  .person-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f5f5f5; }
+  .person-row:last-child { border: none; }
+  .person-name { font-size: 13px; color: #555; }
+  .person-right { text-align: right; }
+  .person-paid { font-weight: 800; color: var(--blue); font-size: 14px; }
+  .person-diff { font-size: 11px; }
+  .btn-dl { width: 100%; padding: 14px; border-radius: 14px; border: none; background: linear-gradient(135deg, var(--green), #00b894); color: #fff; font-family: inherit; font-weight: 800; font-size: 15px; cursor: pointer; box-shadow: 0 4px 16px rgba(29,209,161,0.35); margin-bottom: 10px; }
+  .btn-clear { width: 100%; padding: 12px; border-radius: 14px; border: 2px solid var(--red); background: #fff; color: var(--red); font-family: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .footer { text-align: center; margin-top: 24px; font-size: 12px; color: #ccc; }
+  .btn-load-empty { margin-top: 14px; padding: 10px 20px; border-radius: 30px; border: 2px dashed var(--orange); background: #FFF8F0; color: var(--orange); font-family: inherit; font-weight: 700; font-size: 13px; cursor: pointer; }
+
+  /* Loading overlay */
+  #loading { position: fixed; inset: 0; background: rgba(255,255,255,0.92); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-size: 15px; color: #888; font-weight: 700; }
+  #loading .spin { font-size: 36px; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Loading screen -->
+<div id="loading"><div class="spin">🌴</div><div id="loading-text">กำลังโหลดข้อมูลจาก Cloud...</div></div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Sync Status -->
+<div id="sync-status">
+  <div id="sync-dot"></div>
+  <span id="sync-text">พร้อมใช้งาน</span>
+</div>
+
+<!-- Preset Modal -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <div style="font-size:40px;text-align:center">🌴</div>
+    <h3>โหลดทริปภาคใต้ 7 วัน?</h3>
+    <div class="modal-sub">
+      <span style="color:#FF6B9D;font-weight:700">สุราษฎร์ธานี → ตรัง → กระบี่ → พังงา</span><br>
+      8 คน · 15 รายการ
+    </div>
+    <div class="preset-list" id="preset-preview"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">ยกเลิก</button>
+      <button class="btn-save" onclick="loadPreset()">✅ โหลดเลย!</button>
+    </div>
+  </div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-emojis">🌴 ☀️ 🐚 🌊 🎒 ✈️ 🗺️ 📸</div>
+  <div class="header-card">
+    <input id="trip-name" type="text" value="ทริปเที่ยวภาคใต้สุดน่ารัก 7 วัน" oninput="debouncedSave()">
+    <div class="header-sub">แผนการเงิน · บันทึกรายรับรายจ่าย</div>
+    <div class="cloud-badge">☁️ บันทึกอัตโนมัติทุก device</div>
+  </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="action-row">
+  <button class="btn-preset" onclick="openModal()">🌴 โหลดทริปภาคใต้</button>
+  <button class="btn-excel" id="btn-excel" onclick="exportExcel()">📊 Export Excel</button>
+</div>
+
+<!-- Summary Cards -->
+<div class="summary-grid">
+  <div class="summary-card" style="border-top:4px solid #FF6B9D">
+    <div class="icon">💸</div>
+    <div class="label">ค่าใช้จ่ายรวม</div>
+    <div class="value" id="s-total" style="color:#FF6B9D">฿0</div>
+    <div class="sub" id="s-count">0 รายการ</div>
+  </div>
+  <div class="summary-card" style="border-top:4px solid #54A0FF">
+    <div class="icon">👥</div>
+    <div class="label" id="s-avg-label">เฉลี่ย 8 คน</div>
+    <div class="value" id="s-avg" style="color:#54A0FF">฿0</div>
+    <div class="sub">ต่อคน</div>
+  </div>
+</div>
+
+<!-- Budget -->
+<div class="budget-box">
+  <div class="budget-row">
+    <span>💰 งบประมาณ</span>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span style="font-size:12px;color:#888">จำนวนคน:</span>
+      <select class="member-sel" id="member-count" onchange="debouncedSave();render()">
+        <option>1</option><option>2</option><option>3</option><option>4</option>
+        <option>5</option><option>6</option><option>7</option><option value="8" selected>8</option>
+        <option>9</option><option>10</option><option>12</option><option>15</option><option>20</option>
+      </select>
+      <span style="font-size:12px;color:#888">คน</span>
+    </div>
+  </div>
+  <div class="budget-input-row">
+    <span style="font-size:13px;color:#888">ตั้งงบ:</span>
+    <input type="number" id="budget" placeholder="เช่น 100000" oninput="debouncedSave();renderBudget()">
+    <span>บาท</span>
+  </div>
+  <div id="budget-bar-wrap" style="display:none">
+    <div class="prog-wrap"><div class="prog-bar" id="prog-bar"></div></div>
+    <div class="prog-labels">
+      <span id="prog-pct" style="color:#888"></span>
+      <span id="prog-left" style="font-weight:700"></span>
+    </div>
+  </div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('add',this)">➕ เพิ่ม</button>
+  <button class="tab-btn" onclick="switchTab('list',this)">📋 รายการ</button>
+  <button class="tab-btn" onclick="switchTab('summary',this)">📊 สรุป</button>
+</div>
+
+<!-- ADD TAB -->
+<div class="tab-panel active" id="tab-add">
+  <div class="form-card">
+    <div class="form-title" id="form-title">➕ เพิ่มรายจ่ายใหม่</div>
+    <label class="lbl">รายการ</label>
+    <input class="inp" id="f-desc" placeholder="เช่น ค่าห้องพัก, ข้าวผัดทะเล...">
+    <label class="lbl">จำนวนเงิน (บาท)</label>
+    <input class="inp inp-amount" id="f-amount" type="number" placeholder="0">
+    <label class="lbl">หมวดหมู่</label>
+    <div class="cat-grid" id="cat-grid"></div>
+    <div class="two-col">
+      <div>
+        <label class="lbl">ใครจ่าย</label>
+        <select class="inp" id="f-paidby" style="margin-bottom:0"></select>
+      </div>
+      <div>
+        <label class="lbl">วันที่</label>
+        <input class="inp" id="f-date" type="date" style="margin-bottom:0">
+      </div>
+    </div>
+    <label class="lbl" style="margin-top:14px">หมายเหตุ (ถ้ามี)</label>
+    <input class="inp" id="f-note" placeholder="โน้ตเพิ่มเติม...">
+    <div class="form-btns">
+      <button class="btn-cancel" id="btn-cancel" style="display:none" onclick="cancelEdit()">ยกเลิก</button>
+      <button class="btn-save" id="btn-save" onclick="saveExpense()">✅ บันทึกรายการ</button>
+    </div>
+  </div>
+</div>
+
+<!-- LIST TAB -->
+<div class="tab-panel" id="tab-list">
+  <div class="filter-row" id="filter-row"></div>
+  <div id="exp-list"></div>
+</div>
+
+<!-- SUMMARY TAB -->
+<div class="tab-panel" id="tab-summary">
+  <div class="total-card">
+    <div class="t-label">ยอดรวมทั้งหมด</div>
+    <div class="t-value" id="sum-total">฿0</div>
+    <div class="t-sub" id="sum-per"></div>
+  </div>
+  <div class="white-card" id="cat-summary"></div>
+  <div class="white-card" id="person-summary"></div>
+  <button class="btn-dl" onclick="exportExcel()">📊 ดาวน์โหลด Excel (4 ชีท)</button>
+  <button class="btn-clear" onclick="clearAll()">🗑️ ล้างข้อมูลทั้งหมด</button>
+</div>
+
+<div class="footer">✈️ Travel Budget Tracker · บันทึกทุกบาท สนุกทุกทริป 🌴<br><span style="font-size:10px;color:#ddd">☁️ ข้อมูลบันทึกใน Cloud อัตโนมัติ</span></div>
+
+<script>
+const STORAGE_KEY = 'travel_budget_v1';
+
+const CATS = [
+  { id:'hotel',     label:'🏨 ที่พัก / โรงแรม',  color:'#FF6B9D', bg:'#FFF0F5' },
+  { id:'food',      label:'🍜 ค่าอาหาร',           color:'#FF9F43', bg:'#FFF8F0' },
+  { id:'transport', label:'🚌 ค่าเดินทาง',          color:'#54A0FF', bg:'#F0F6FF' },
+  { id:'activity',  label:'🎡 ค่าท่องเที่ยว',       color:'#1DD1A1', bg:'#F0FBF8' },
+  { id:'shopping',  label:'🛍️ ค่าช้อปปิ้ง',         color:'#A29BFE', bg:'#F5F3FF' },
+  { id:'ticket',    label:'🎫 ค่าเข้าสถานที่',      color:'#FD79A8', bg:'#FFF0F7' },
+  { id:'fuel',      label:'⛽ ค่าน้ำมัน',            color:'#FDCB6E', bg:'#FFFBF0' },
+  { id:'other',     label:'📦 อื่นๆ',               color:'#636E72', bg:'#F5F5F5' },
+];
+
+const PRESET = [
+  { description:'โรงแรมสุราษฎร์ธานี (คืนที่ 1)', amount:4000, category:'hotel', paidBy:'คนที่ 1', date:'2025-01-01', note:'วันที่ 1' },
+  { description:'รีสอร์ทเกาะสมุย (คืนที่ 2)', amount:6400, category:'hotel', paidBy:'คนที่ 2', date:'2025-01-02', note:'วันที่ 2' },
+  { description:'โรงแรมตรัง (คืนที่ 3)', amount:3600, category:'hotel', paidBy:'คนที่ 1', date:'2025-01-03', note:'วันที่ 3' },
+  { description:'รีสอร์ทกระบี่ (คืนที่ 4)', amount:5600, category:'hotel', paidBy:'คนที่ 3', date:'2025-01-04', note:'วันที่ 4' },
+  { description:'รีสอร์ทเกาะพีพี (คืนที่ 5)', amount:7200, category:'hotel', paidBy:'คนที่ 2', date:'2025-01-05', note:'วันที่ 5' },
+  { description:'ที่พักพังงา (คืนที่ 6)', amount:4800, category:'hotel', paidBy:'คนที่ 1', date:'2025-01-06', note:'วันที่ 6' },
+  { description:'ค่ารถตู้/รถเช่ารวม 7 วัน', amount:12000, category:'transport', paidBy:'คนที่ 4', date:'2025-01-01', note:'ตลอดทริป' },
+  { description:'ตั๋วเครื่องบิน (ขาไป-กลับ)', amount:16000, category:'transport', paidBy:'คนที่ 5', date:'2025-01-01', note:'8 คน รวมกัน' },
+  { description:'ค่าอาหาร 7 วัน', amount:22400, category:'food', paidBy:'คนที่ 3', date:'2025-01-01', note:'อาหารทะเลสด' },
+  { description:'ทัวร์เรือเกาะสมุย', amount:4800, category:'activity', paidBy:'คนที่ 2', date:'2025-01-02', note:'วันที่ 2' },
+  { description:'ทัวร์เรือเกาะพีพี', amount:6400, category:'activity', paidBy:'คนที่ 6', date:'2025-01-05', note:'วันที่ 5' },
+  { description:'ทัวร์พังงา/เกาะเจมส์บอนด์', amount:4000, category:'activity', paidBy:'คนที่ 7', date:'2025-01-06', note:'วันที่ 6' },
+  { description:'ค่าเข้าอุทยาน/ถ้ำเสือ', amount:3200, category:'ticket', paidBy:'คนที่ 1', date:'2025-01-04', note:'ตลอดทริป' },
+  { description:'ค่าช้อปปิ้ง/ของฝาก', amount:8000, category:'shopping', paidBy:'คนที่ 8', date:'2025-01-07', note:'วันสุดท้าย' },
+  { description:'ค่าน้ำมันรถ', amount:2400, category:'fuel', paidBy:'คนที่ 4', date:'2025-01-01', note:'ตลอดทริป' },
+];
+
+// ---- State ----
+let expenses = [];
+let editId = null;
+let filterCat = 'all';
+let selCat = 'food';
+let saveTimer = null;
+let isSaving = false;
+
+// ---- Sync UI ----
+function setSyncStatus(state, text) {
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-text');
+  dot.className = state; // 'syncing' | 'synced' | 'error' | ''
+  txt.textContent = text;
+}
+
+// ---- Cloud Storage (window.storage) ----
+async function save() {
+  if (isSaving) return;
+  isSaving = true;
+  setSyncStatus('syncing', 'กำลังบันทึก...');
+  const data = {
+    expenses,
+    tripName: document.getElementById('trip-name').value,
+    budget: document.getElementById('budget').value,
+    members: document.getElementById('member-count').value,
+    savedAt: new Date().toISOString(),
+  };
+  try {
+    if (window.storage) {
+      const result = await window.storage.set(STORAGE_KEY, JSON.stringify(data));
+      if (result) {
+        setSyncStatus('synced', 'บันทึกแล้ว ☁️');
+      } else {
+        throw new Error('storage returned null');
+      }
+    } else {
+      // Fallback to localStorage if window.storage unavailable
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      setSyncStatus('synced', 'บันทึกแล้ว (local)');
+    }
+  } catch (err) {
+    console.warn('Save error:', err);
+    // Fallback
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch(e) {}
+    setSyncStatus('error', 'บันทึกไม่ได้ ⚠️');
+  } finally {
+    isSaving = false;
+  }
+}
+
+// Debounce saves (avoid hammering storage on rapid input)
+function debouncedSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 800);
+}
+
+async function loadData() {
+  let data = null;
+  try {
+    if (window.storage) {
+      const result = await window.storage.get(STORAGE_KEY);
+      if (result && result.value) {
+        data = JSON.parse(result.value);
+      }
+    }
+  } catch (err) {
+    console.warn('Cloud load error:', err);
+  }
+
+  // Fallback to localStorage
+  if (!data) {
+    try {
+      const local = localStorage.getItem(STORAGE_KEY);
+      if (local) data = JSON.parse(local);
+    } catch(e) {}
+  }
+
+  if (data) {
+    expenses = data.expenses || [];
+    if (data.tripName) document.getElementById('trip-name').value = data.tripName;
+    if (data.budget) document.getElementById('budget').value = data.budget;
+    if (data.members) {
+      const s = document.getElementById('member-count');
+      for (let o of s.options) { if (o.value === data.members) { o.selected = true; break; } }
+    }
+    if (data.savedAt) {
+      const d = new Date(data.savedAt);
+      setSyncStatus('synced', 'โหลดแล้ว · ' + d.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'}));
+    }
+    return true;
+  }
+  return false;
+}
+
+// ---- Init ----
+async function init() {
+  document.getElementById('loading-text').textContent = 'กำลังโหลดข้อมูลจาก Cloud...';
+  const hasData = await loadData();
+  buildCatGrid();
+  buildFilterRow();
+  buildPaidBySelect();
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  buildPresetPreview();
+  render();
+  document.getElementById('loading').style.display = 'none';
+
+  if (!hasData) {
+    setSyncStatus('', 'ยังไม่มีข้อมูล');
+  }
+}
+
+function buildCatGrid() {
+  const g = document.getElementById('cat-grid'); g.innerHTML = '';
+  CATS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'cat-btn'; b.dataset.id = c.id; b.textContent = c.label;
+    b.onclick = () => selectCat(c.id);
+    g.appendChild(b);
+  });
+  selectCat(selCat);
+}
+
+function selectCat(id) {
+  selCat = id;
+  document.querySelectorAll('.cat-btn').forEach(b => {
+    const c = CATS.find(x => x.id === b.dataset.id);
+    const active = b.dataset.id === id;
+    b.style.borderColor = active ? c.color : '#eee';
+    b.style.background = active ? c.bg : '#fff';
+    b.style.color = active ? c.color : '#888';
+  });
+}
+
+function buildFilterRow() {
+  const r = document.getElementById('filter-row'); r.innerHTML = '';
+  const all = document.createElement('button');
+  all.className = 'chip' + (filterCat === 'all' ? ' active' : '');
+  all.textContent = 'ทั้งหมด';
+  all.onclick = () => { filterCat = 'all'; buildFilterRow(); renderList(); };
+  r.appendChild(all);
+  CATS.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (filterCat === c.id ? ' active' : '');
+    b.textContent = c.label.split(' ')[0];
+    if (filterCat === c.id) { b.style.background = c.color; b.style.borderColor = c.color; b.style.color = '#fff'; }
+    b.onclick = () => { filterCat = c.id; buildFilterRow(); renderList(); };
+    r.appendChild(b);
+  });
+}
+
+function buildPaidBySelect() {
+  const s = document.getElementById('f-paidby'); s.innerHTML = '';
+  const m = parseInt(document.getElementById('member-count').value) || 8;
+  for (let i = 1; i <= m; i++) {
+    const o = document.createElement('option');
+    o.value = `คนที่ ${i}`; o.textContent = `คนที่ ${i}`; s.appendChild(o);
+  }
+}
+
+function buildPresetPreview() {
+  const el = document.getElementById('preset-preview'); el.innerHTML = '';
+  PRESET.forEach(e => {
+    const c = CATS.find(x => x.id === e.category) || CATS[7];
+    const r = document.createElement('div'); r.className = 'preset-row';
+    r.innerHTML = `<span>${c.label.split(' ')[0]} ${e.description}</span><span>฿${fmt(e.amount)}</span>`;
+    el.appendChild(r);
+  });
+}
+
+// ---- Data ops ----
+async function saveExpense() {
+  const desc = document.getElementById('f-desc').value.trim();
+  const amt = parseFloat(document.getElementById('f-amount').value);
+  if (!desc || isNaN(amt) || amt <= 0) { showToast('กรอกข้อมูลให้ครบก่อนนะ 😅', 'error'); return; }
+  const exp = {
+    description: desc, amount: amt, category: selCat,
+    paidBy: document.getElementById('f-paidby').value,
+    date: document.getElementById('f-date').value,
+    note: document.getElementById('f-note').value
+  };
+  if (editId !== null) {
+    expenses = expenses.map(e => e.id === editId ? { ...exp, id: editId } : e);
+    editId = null; showToast('แก้ไขรายการแล้ว ✅');
+  } else {
+    expenses = [{ ...exp, id: Date.now() }, ...expenses];
+    showToast('เพิ่มรายการแล้ว 🎉');
+  }
+  await save(); render();
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-note').value = '';
+  document.getElementById('form-title').textContent = '➕ เพิ่มรายจ่ายใหม่';
+  document.getElementById('btn-save').textContent = '✅ บันทึกรายการ';
+  document.getElementById('btn-cancel').style.display = 'none';
+}
+
+function editExpense(id) {
+  const e = expenses.find(x => x.id === id); if (!e) return;
+  editId = id;
+  document.getElementById('f-desc').value = e.description;
+  document.getElementById('f-amount').value = e.amount;
+  document.getElementById('f-note').value = e.note || '';
+  document.getElementById('f-date').value = e.date;
+  document.getElementById('f-paidby').value = e.paidBy;
+  selectCat(e.category);
+  document.getElementById('form-title').textContent = '✏️ แก้ไขรายการ';
+  document.getElementById('btn-save').textContent = '💾 บันทึกการแก้ไข';
+  document.getElementById('btn-cancel').style.display = 'block';
+  switchTab('add', document.querySelector('.tab-btn'));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelEdit() {
+  editId = null;
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-note').value = '';
+  document.getElementById('form-title').textContent = '➕ เพิ่มรายจ่ายใหม่';
+  document.getElementById('btn-save').textContent = '✅ บันทึกรายการ';
+  document.getElementById('btn-cancel').style.display = 'none';
+}
+
+async function deleteExpense(id) {
+  if (!confirm('ลบรายการนี้?')) return;
+  expenses = expenses.filter(e => e.id !== id);
+  await save(); render(); showToast('ลบรายการแล้ว 🗑️', 'error');
+}
+
+async function clearAll() {
+  if (!confirm('ต้องการล้างข้อมูลทั้งหมดหรือไม่?')) return;
+  expenses = [];
+  await save(); render(); showToast('ล้างข้อมูลแล้ว', 'error');
+}
+
+// ---- Preset / Modal ----
+function openModal() { document.getElementById('modal').classList.add('open'); }
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+async function loadPreset() {
+  expenses = PRESET.map((e, i) => ({ ...e, id: Date.now() + i }));
+  document.getElementById('trip-name').value = 'ทริปเที่ยวภาคใต้สุดน่ารัก 7 วัน';
+  const s = document.getElementById('member-count');
+  for (let o of s.options) if (o.value === '8') { o.selected = true; break; }
+  await save(); render(); closeModal(); showToast('โหลดทริปภาคใต้แล้ว 🌴');
+}
+
+// ---- Render ----
+function fmt(n) { return Number(n).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+function getCat(id) { return CATS.find(c => c.id === id) || CATS[7]; }
+function getTotal() { return expenses.reduce((s, e) => s + parseFloat(e.amount || 0), 0); }
+function getMembers() { return parseInt(document.getElementById('member-count').value) || 8; }
+
+function render() {
+  buildPaidBySelect();
+  const total = getTotal(), members = getMembers(), per = members > 0 ? total / members : 0;
+  document.getElementById('s-total').textContent = '฿' + fmt(total);
+  document.getElementById('s-count').textContent = expenses.length + ' รายการ';
+  document.getElementById('s-avg-label').textContent = 'เฉลี่ย ' + members + ' คน';
+  document.getElementById('s-avg').textContent = '฿' + fmt(per);
+  document.getElementById('sum-total').textContent = '฿' + fmt(total);
+  document.getElementById('sum-per').textContent = 'หาร ' + members + ' คน = ฿' + fmt(per) + ' / คน';
+  document.getElementById('btn-excel').disabled = expenses.length === 0;
+  renderBudget(); renderList(); renderSummary();
+}
+
+function renderBudget() {
+  const budgetNum = parseFloat(document.getElementById('budget').value) || 0;
+  const total = getTotal(); const wrap = document.getElementById('budget-bar-wrap');
+  if (budgetNum <= 0) { wrap.style.display = 'none'; return; }
+  wrap.style.display = 'block';
+  const pct = Math.min(total / budgetNum * 100, 100);
+  const bar = document.getElementById('prog-bar');
+  bar.style.width = pct + '%'; bar.className = 'prog-bar' + (pct > 90 ? ' over' : '');
+  document.getElementById('prog-pct').textContent = 'ใช้ไป ' + pct.toFixed(1) + '%';
+  const left = budgetNum - total;
+  const lbl = document.getElementById('prog-left');
+  lbl.textContent = left >= 0 ? 'เหลือ ฿' + fmt(left) : 'เกินงบ ฿' + fmt(Math.abs(left));
+  lbl.style.color = left >= 0 ? '#1DD1A1' : '#FF6B6B';
+}
+
+function renderList() {
+  const list = document.getElementById('exp-list');
+  const filtered = filterCat === 'all' ? expenses : expenses.filter(e => e.category === filterCat);
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="big">🌴</div><p>ยังไม่มีรายการ</p><button class="btn-load-empty" onclick="openModal()">🌴 โหลดทริปภาคใต้</button></div>`;
+    return;
+  }
+  list.innerHTML = '<div class="exp-list">' + filtered.map(e => {
+    const c = getCat(e.category);
+    return `<div class="exp-item" style="border-left:4px solid ${c.color}">
+      <div class="exp-icon" style="background:${c.bg}">${c.label.split(' ')[0]}</div>
+      <div class="exp-info">
+        <div class="exp-name">${e.description}</div>
+        <div class="exp-meta">${e.date} · ${e.paidBy}</div>
+        ${e.note ? `<div class="exp-note">💬 ${e.note}</div>` : ''}
+      </div>
+      <div class="exp-right">
+        <div class="exp-amount" style="color:${c.color}">฿${fmt(e.amount)}</div>
+        <div class="exp-actions">
+          <button onclick="editExpense(${e.id})">✏️</button>
+          <button onclick="deleteExpense(${e.id})">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderSummary() {
+  const total = getTotal(), members = getMembers(), per = members > 0 ? total / members : 0;
+  const catEl = document.getElementById('cat-summary');
+  const catData = CATS.map(c => ({ ...c, tot: expenses.filter(e => e.category === c.id).reduce((s, e) => s + parseFloat(e.amount || 0), 0) })).filter(c => c.tot > 0).sort((a, b) => b.tot - a.tot);
+  if (catData.length === 0) { catEl.innerHTML = '<div class="card-title">📊 แยกตามหมวดหมู่</div><p style="color:#ccc;font-size:13px">ยังไม่มีข้อมูล</p>'; }
+  else catEl.innerHTML = '<div class="card-title">📊 แยกตามหมวดหมู่</div>' + catData.map(c => `
+    <div class="cat-row">
+      <div class="cat-row-top"><span>${c.label}</span><span style="color:${c.color}">฿${fmt(c.tot)}</span></div>
+      <div class="prog-sm"><div class="prog-sm-bar" style="width:${total > 0 ? (c.tot / total * 100) : 0}%;background:${c.color}"></div></div>
+      <div class="cat-pct">${total > 0 ? (c.tot / total * 100).toFixed(1) : 0}%</div>
+    </div>`).join('');
+  const perEl = document.getElementById('person-summary');
+  const rows = Array.from({ length: members }, (_, i) => `คนที่ ${i + 1}`).map(m => {
+    const paid = expenses.filter(e => e.paidBy === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    const diff = paid - per;
+    return `<div class="person-row">
+      <span class="person-name">🙋 ${m}</span>
+      <div class="person-right">
+        <div class="person-paid">฿${fmt(paid)}</div>
+        <div class="person-diff" style="color:${diff >= 0 ? '#1DD1A1' : '#FF6B6B'}">${diff >= 0 ? 'ได้รับคืน ฿' + fmt(diff) : 'ต้องจ่ายเพิ่ม ฿' + fmt(Math.abs(diff))}</div>
+      </div>
+    </div>`;
+  });
+  perEl.innerHTML = '<div class="card-title">👤 แยกตามผู้จ่าย</div>' + rows.join('');
+}
+
+// ---- Excel Export ----
+function exportExcel() {
+  if (!window.XLSX) { showToast('กำลังโหลด Excel library...', 'error'); return; }
+  const total = getTotal(), members = getMembers(), per = members > 0 ? total / members : 0;
+  const tripName = document.getElementById('trip-name').value;
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    ['วันที่', 'รายการ', 'หมวดหมู่', 'ผู้จ่าย', 'จำนวนเงิน (บาท)', 'หมายเหตุ'],
+    ...expenses.map(e => [e.date, e.description, getCat(e.category).label.replace(/^\S+ /, ''), e.paidBy, parseFloat(e.amount), e.note || ''])
+  ]);
+  ws1['!cols'] = [{ wch: 12 }, { wch: 36 }, { wch: 22 }, { wch: 12 }, { wch: 18 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, ws1, 'รายการทั้งหมด');
+  const catRows = CATS.map(c => { const items = expenses.filter(e => e.category === c.id); const sum = items.reduce((s, e) => s + parseFloat(e.amount || 0), 0); return [c.label.replace(/^\S+ /, ''), items.length, sum, total > 0 ? +(sum / total * 100).toFixed(1) : 0]; }).filter(r => r[1] > 0);
+  catRows.push(['รวมทั้งหมด', expenses.length, total, 100]);
+  const ws2 = XLSX.utils.aoa_to_sheet([['หมวดหมู่', 'จำนวนรายการ', 'ยอดรวม (บาท)', '% ของทั้งหมด'], ...catRows]);
+  ws2['!cols'] = [{ wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'สรุปตามหมวด');
+  const personRows = Array.from({ length: members }, (_, i) => `คนที่ ${i + 1}`).map(m => { const paid = expenses.filter(e => e.paidBy === m).reduce((s, e) => s + parseFloat(e.amount || 0), 0); const diff = paid - per; return [m, +paid.toFixed(2), +per.toFixed(2), +Math.abs(diff).toFixed(2), diff >= 0 ? 'ได้รับคืน' : 'ต้องจ่ายเพิ่ม']; });
+  const ws3 = XLSX.utils.aoa_to_sheet([['ผู้จ่าย', 'ยอดที่จ่ายไป (฿)', 'ส่วนแบ่งต่อคน (฿)', 'ผลต่าง (฿)', 'สถานะ'], ...personRows]);
+  ws3['!cols'] = [{ wch: 12 }, { wch: 18 }, { wch: 20 }, { wch: 14 }, { wch: 15 }];
+  XLSX.utils.book_append_sheet(wb, ws3, 'สรุปตามคน');
+  const budget = parseFloat(document.getElementById('budget').value) || 0;
+  const ws4 = XLSX.utils.aoa_to_sheet([['ข้อมูลทริป', ''], ['ชื่อทริป', tripName], ['จำนวนคน', members], ['งบประมาณ (บาท)', budget || '-'], ['ยอดใช้จ่ายรวม (บาท)', +total.toFixed(2)], ['เฉลี่ยต่อคน (บาท)', +per.toFixed(2)], ['จำนวนรายการ', expenses.length], ['วันที่ Export', new Date().toLocaleDateString('th-TH')]]);
+  ws4['!cols'] = [{ wch: 25 }, { wch: 35 }];
+  XLSX.utils.book_append_sheet(wb, ws4, 'ข้อมูลทริป');
+  XLSX.writeFile(wb, tripName.replace(/[^\w\u0E00-\u0E7F]/g, '_') + '_expenses.xlsx');
+  showToast('ดาวน์โหลด Excel แล้ว 📊');
+}
+
+// ---- UI helpers ----
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => { if (b.getAttribute('onclick') && b.getAttribute('onclick').includes("'" + id + "'")) b.classList.add('active'); });
+  if (id === 'summary') renderSummary();
+  if (id === 'list') { buildFilterRow(); renderList(); }
+}
+
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast'); t.textContent = msg; t.className = type === 'error' ? 'error' : '';
+  void t.offsetWidth; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+document.getElementById('member-count').addEventListener('change', () => { debouncedSave(); render(); });
+document.getElementById('budget').addEventListener('input', () => { debouncedSave(); renderBudget(); });
+
+init();
+</script>
+</body>
+</html>
